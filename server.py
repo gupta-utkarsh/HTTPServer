@@ -18,20 +18,38 @@ s.listen(10)
 
 
 class myThread (threading.Thread) : 
-    def __init__ (self, conn):
+    def __init__ (self, conn) :
         threading.Thread.__init__(self)
-        self.conn = conn      
+        self.conn = conn
     def run(self):
         tcp_connect(self.conn)
-
+'''
+class respond () :
+    def __init__ (self,conn,data) :
+'''                 
 
 def tcp_connect(conn) : 
-
     while True:
         data = conn.recv(1024)
-        reply = 'OK...' + data.decode('utf-8')
+        data = data.decode('utf-8')
         if not data:
             break
+        '''respond(self,conn,data).getResponse()'''
+        print(data)
+        """
+        flag = validate_request(data)
+        if not flag:
+            conn.sendall(bytes('LOL', 'utf-8'))     
+        """
+
+        filename = 'index.html'
+        file_object = open(filename)
+        body = file_object.read()
+        
+	"""body = '<html>\r\n\t<head>\r\n\t\t<title>hello</title>\r\n\t</head>\r\n\t<body>\r\n\t\tLOL\r\n\t</body>\r\n</html>\r\n'"""
+
+        length = str(len(body))
+        reply = 'HTTP/1.1 200 OK\r\nServer : Python/0.1.0 (Custom)\r\nContent-Type : text/html\r\nContent-Length : '+length+'\r\n\r\n'+body
         conn.sendall(bytes(reply, 'utf-8'))
     
     conn.close()
