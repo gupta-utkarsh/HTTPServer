@@ -3,10 +3,12 @@
 import socket
 import sys
 import threading
+import re
+import os.path
 
 exitFlag = 0
 
-HOST = ''
+HOST = 'localhost'
 PORT = 8888
 
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -23,10 +25,108 @@ class myThread (threading.Thread) :
         self.conn = conn
     def run(self):
         tcp_connect(self.conn)
-'''
+
 class respond () :
+
+    methods = ['GET', 'HEAD']
+    response_lines = {'200' : b'HTTP/1.1 200 OK\r\n', '404' : b'HTTP/1.1 404 Not Found\r\n', '400' : b'HTTP/1.1 400 Bad Request\r\n'} 
+    
+
     def __init__ (self,conn,data) :
-'''                 
+        self.conn = conn
+        self.data = data
+        self.body = b''
+        self.request = {'method' : '', 'path' : '', 'status_code' : ''}
+        self.header = b'Server : Python/0.1.0 (Custom)\r\nContent-Type : text/html\r\n'
+        self.main_respond()
+        
+    def main_respond(self) : 
+        partials = self.data.split('\r\n')
+
+        if not self.validate_request(partials):
+            reply = self.error_response() 
+        else:                       
+            self.parse_request(partials)            
+            self.set_status_code()
+            reply = respond.response_methods[self.request['status_code']](self)
+
+        self.conn.sendall(reply)
+
+    def validate_request(self, partials) :
+        regex = r'^(' + r'|'.join(respond.methods) + r')(\s\/[A-Za-z1-9\/.]*)(\sHTTP\/1.1)$'
+        return re.match(regex, partials[0])
+
+    def parse_request(self, partials) : 
+
+        method_regex = r'^[A-Z]{1,}(?= )'
+        path_regex = r'\/.*(?= )'
+        
+        self.request['path'] = re.search(path_regex, partials[0]).group(0)
+        if re.match(r'^.*\/$', self.request['path']) :    
+            self.request['path'] = self.request['path']+'index.html'
+        self.request['path'] = self.request['path'][1:]        
+        
+        self.request['method'] = re.search(method_regex, partials[0]).group(0)
+
+    def readfile(self, path) :
+        file_object = open(path)
+        buf = file_object.read()
+        return buf
+    
+    def set_status_code(self) :
+        
+        if not self.request['method'] in respond.methods :
+            self.request['status_code'] = '400'
+
+        if os.path.isfile(self.request['path']) :
+            self.request['status_code'] = '200'
+        else :
+            self.request['status_code'] = '404'
+
+    def set_header(self, stream, status_code) : 
+        length = bytes(str(len(stream)), 'utf-8')
+        self.header = respond.response_lines[status_code] + self.header + b'Content-Length : '+ length + b'\r\n\r\n'
+    
+    def set_body(self, stream) : 
+        self.body = stream.encode('utf-8')
+
+    def error_response(self) : 
+        stream = '<html><head><title>400 Bad Request</title></head><body>400 Bad Request</body></html>'
+        self.set_header(stream, self.request['status_code'])
+        self.set_body(stream)  
+
+        if self.request['method'] == 'HEAD' :
+            reply = self.header
+        else :
+            reply = self.header + self.body            
+        
+        return reply
+
+    def notfound_response(self) :
+        stream = '<html><head><title>404 Not Found</title></head><body>404 Not Found</body></html>'
+        self.set_header(stream, self.request['status_code'])
+        self.set_body(stream)        
+        
+        if self.request['method'] == 'HEAD' :
+            reply = self.header
+        else :
+            reply = self.header + self.body
+
+        return reply    
+
+    def response(self) :
+        stream = self.readfile(self.request['path'])
+        self.set_header(stream, '200')
+        self.set_body(stream)
+
+        if self.request['method'] == 'HEAD' :
+            reply = self.header
+        else :
+            reply = self.header + self.body
+
+        return reply
+
+    response_methods = {'200' : response,  '404' : notfound_response, '400' : error_response}
 
 def tcp_connect(conn) : 
     while True:
@@ -34,24 +134,8 @@ def tcp_connect(conn) :
         data = data.decode('utf-8')
         if not data:
             break
-        '''respond(self,conn,data).getResponse()'''
-        print(data)
-        """
-        flag = validate_request(data)
-        if not flag:
-            conn.sendall(bytes('LOL', 'utf-8'))     
-        """
-
-        filename = 'index.html'
-        file_object = open(filename)
-        body = file_object.read()
-        
-	"""body = '<html>\r\n\t<head>\r\n\t\t<title>hello</title>\r\n\t</head>\r\n\t<body>\r\n\t\tLOL\r\n\t</body>\r\n</html>\r\n'"""
-
-        length = str(len(body))
-        reply = 'HTTP/1.1 200 OK\r\nServer : Python/0.1.0 (Custom)\r\nContent-Type : text/html\r\nContent-Length : '+length+'\r\n\r\n'+body
-        conn.sendall(bytes(reply, 'utf-8'))
-    
+        print(data)       
+        respond(conn,data)
     conn.close()
 
 while 1:
