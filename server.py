@@ -4,6 +4,7 @@ import socket
 import sys
 import threading
 import re
+import mimetypes
 import os.path
 
 exitFlag = 0
@@ -37,7 +38,7 @@ class respond () :
         self.data = data
         self.body = b''
         self.request = {'method' : '', 'path' : '', 'status_code' : ''}
-        self.header = b'Server : Python/0.1.0 (Custom)\r\nContent-Type : text/html\r\n'
+        self.header = b'Server : Python/0.1.0 (Custom)\r\nConnection: close\r\n'
         self.main_respond()
         
     def main_respond(self) : 
@@ -69,7 +70,7 @@ class respond () :
         self.request['method'] = re.search(method_regex, partials[0]).group(0)
 
     def readfile(self, path) :
-        file_object = open(path)
+        file_object = open(path, 'rb')
         buf = file_object.read()
         return buf
     
@@ -83,15 +84,21 @@ class respond () :
         else :
             self.request['status_code'] = '404'
 
-    def set_header(self, stream, status_code) : 
-        length = bytes(str(len(stream)), 'utf-8')
-        self.header = respond.response_lines[status_code] + self.header + b'Content-Length : '+ length + b'\r\n\r\n'
-    
-    def set_body(self, stream) : 
-        self.body = stream.encode('utf-8')
+    def set_header(self, stream, status_code) :
+        length = bytes(str(len(stream)), 'latin-1')
+        ctype = mimetypes.guess_type(self.request['path'])[0].encode('latin-1')
+        self.header = respond.response_lines[status_code] + self.header + b'Content-Length : '+ length + b'\r\n'
+        if status_code == '200' :
+            self.header = self.header + b'Content-Type : ' + ctype + b'\r\n'
+        else :
+            self.header = self.header + b'Content-Type : text/html\r\n'
+        self.header = self.header + b'\r\n'
 
+    def set_body(self, stream) : 
+        self.body = stream
+ 
     def error_response(self) : 
-        stream = '<html><head><title>400 Bad Request</title></head><body>400 Bad Request</body></html>'
+        stream = b'<html><head><title>400 Bad Request</title></head><body>400 Bad Request</body></html>'
         self.set_header(stream, self.request['status_code'])
         self.set_body(stream)  
 
@@ -103,7 +110,7 @@ class respond () :
         return reply
 
     def notfound_response(self) :
-        stream = '<html><head><title>404 Not Found</title></head><body>404 Not Found</body></html>'
+        stream = b'<html><head><title>404 Not Found</title></head><body>404 Not Found</body></html>'
         self.set_header(stream, self.request['status_code'])
         self.set_body(stream)        
         
@@ -116,7 +123,7 @@ class respond () :
 
     def response(self) :
         stream = self.readfile(self.request['path'])
-        self.set_header(stream, '200')
+        self.set_header(stream, self.request['status_code'])
         self.set_body(stream)
 
         if self.request['method'] == 'HEAD' :
@@ -129,13 +136,10 @@ class respond () :
     response_methods = {'200' : response,  '404' : notfound_response, '400' : error_response}
 
 def tcp_connect(conn) : 
-    while True:
-        data = conn.recv(1024)
-        data = data.decode('utf-8')
-        if not data:
-            break
-        print(data)       
-        respond(conn,data)
+    data = conn.recv(1024)
+    data = data.decode('latin-1')
+    print(data)       
+    respond(conn,data)
     conn.close()
 
 while 1:
